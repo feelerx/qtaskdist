@@ -1,3 +1,4 @@
+
 import os
 import asyncio
 from typing import Dict, Any
@@ -5,8 +6,11 @@ from dotenv import load_dotenv
 from qbraid import QbraidProvider
 from qbraid.transpiler import transpile
 from qiskit import QuantumCircuit
-import cirq
 import json
+import sys
+from io import StringIO
+from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister
+from qiskit.circuit.library import *
 
 from circuit_processor import QueueProcessor, STREAMS
 
@@ -19,20 +23,56 @@ class CircuitConverter:
     """Handles circuit conversion between different frameworks"""
     
     @staticmethod
+    def execute_code_safely(code_string: str, circuit_type: str):
+        """Execute user code and extract the circuit object"""
+        # Create a restricted namespace with only necessary imports
+        namespace = {
+            '__builtins__': __builtins__,
+        }
+        
+        # Add framework-specific imports
+        if circuit_type == "qiskit":
+            namespace.update({
+                'QuantumCircuit': QuantumCircuit,
+                'QuantumRegister': QuantumRegister,
+                'ClassicalRegister': ClassicalRegister,
+            })
+        elif circuit_type in ["braket", "amazon_braket"]:
+            from braket.circuits import Circuit
+            namespace.update({'Circuit': Circuit})
+        
+        try:
+            # Execute the code
+            exec(code_string, namespace)
+            
+            # Extract circuit based on type
+            if circuit_type == "qiskit":
+                # Look for QuantumCircuit instance
+                for key, value in namespace.items():
+                    if isinstance(value, QuantumCircuit):
+                        return value
+                raise ValueError("No QuantumCircuit found in code")
+            
+            elif circuit_type in ["braket", "amazon_braket"]:
+                from braket.circuits import Circuit
+                for key, value in namespace.items():
+                    if isinstance(value, Circuit):
+                        return value
+                raise ValueError("No Braket Circuit found in code")
+        
+        except Exception as e:
+            raise ValueError(f"Error executing {circuit_type} code: {str(e)}")
+    
+    @staticmethod
     def qasm_to_circuit(qasm_string: str, target_type: str = "braket"):
         """Convert QASM string to specified circuit type"""
-        # First convert QASM to Qiskit (most universal)
         qiskit_circuit = QuantumCircuit.from_qasm_str(qasm_string)
         
         if target_type == "qiskit":
             return qiskit_circuit
         elif target_type in ["braket", "amazon_braket"]:
-            # Convert Qiskit to Braket
             return transpile(qiskit_circuit, "braket")
-        elif target_type == "cirq":
-            return transpile(qiskit_circuit, "cirq")
         else:
-            # Default to Braket for QBraid
             return transpile(qiskit_circuit, "braket")
     
     @staticmethod
@@ -40,27 +80,23 @@ class CircuitConverter:
         """Deserialize circuit based on type and convert to target type"""
         
         if circuit_type == "qasm":
+            # Direct QASM string
             return CircuitConverter.qasm_to_circuit(circuit_data, target_type)
         
         elif circuit_type == "qiskit":
-            # Deserialize Qiskit circuit from QASM
-            qiskit_circuit = QuantumCircuit.from_qasm_str(circuit_data)
+            # Execute Qiskit code to get circuit
+            qiskit_circuit = CircuitConverter.execute_code_safely(circuit_data, "qiskit")
             if target_type == "qiskit":
                 return qiskit_circuit
             return transpile(qiskit_circuit, target_type)
         
         elif circuit_type in ["braket", "amazon_braket"]:
-            # Parse Braket circuit from QASM
-            qiskit_circuit = QuantumCircuit.from_qasm_str(circuit_data)
-            return transpile(qiskit_circuit, "braket")
-        
-        elif circuit_type == "cirq":
-            # Parse Cirq circuit from JSON
-            circuit = cirq.read_json(json_text=circuit_data)
-            if target_type == "cirq":
-                return circuit
-            # Convert Cirq to target
-            qiskit_circuit = transpile(circuit, "qiskit")
+            # Execute Braket code to get circuit
+            braket_circuit = CircuitConverter.execute_code_safely(circuit_data, "braket")
+            if target_type == "braket":
+                return braket_circuit
+            # Convert via Qiskit
+            qiskit_circuit = transpile(braket_circuit, "qiskit")
             return transpile(qiskit_circuit, target_type)
         
         else:
@@ -93,7 +129,7 @@ class SimulatorWorker:
             circuit = CircuitConverter.deserialize_circuit(
                 circuit_type, 
                 circuit_data, 
-                target_type="braket"  # QBraid simulators work well with Braket
+                target_type="braket"
             )
             
             # Get simulator device
@@ -102,7 +138,7 @@ class SimulatorWorker:
             # Run circuit
             job = device.run(circuit, shots=shots)
             
-            # Wait for result (simulators are usually fast)
+            # Wait for result
             result = job.result()
             
             # Extract measurements
@@ -128,18 +164,15 @@ class SimulatorWorker:
 async def main():
     """Main entry point for simulator worker"""
     
-    # Initialize queue processor
     processor = QueueProcessor(
         stream_name=STREAMS["simulate"],
         consumer_group="simulator_workers",
         consumer_name=f"simulator_worker_{os.getpid()}"
     )
     
-    # Initialize simulator worker
     worker = SimulatorWorker()
     
     try:
-        # Initialize connections
         await processor.initialize()
         
         print("=" * 60)
@@ -148,7 +181,6 @@ async def main():
         print(f"Consumer: {processor.consumer_name}")
         print("=" * 60)
         
-        # Start consuming messages
         await processor.start_consuming(
             processor_func=worker.process_simulate_task,
             batch_size=10,
