@@ -111,10 +111,6 @@ class BackendWorker:
         if 'ibm' in backend_lower:
             return 'qiskit'
         
-        # Google devices
-        if 'google' in backend_lower or 'cirq' in backend_lower:
-            return 'cirq'
-        
         # Default to Braket
         return 'braket'
 
