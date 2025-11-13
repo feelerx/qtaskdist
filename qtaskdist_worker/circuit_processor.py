@@ -15,9 +15,7 @@ from models import Task
 load_dotenv()
 
 # Redis configuration
-REDIS_HOST = os.getenv("REDIS_HOST")
-REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
-REDIS_DB = int(os.getenv("REDIS_DB", 0))
+REDIS_URL = os.getenv("REDIS_URL")
 
 # Database configuration
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://user:pass@localhost/dbname")
@@ -39,13 +37,11 @@ class QueueProcessor:
         self.db_engine = None
         self.async_session_maker = None
         
-    async def initialize(self):
-        """Initialize Redis and Database connections"""
-        # Initialize Redis
-        self.redis_client = await aioredis.from_url(
-            f"redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}",
+        redis_client = await aioredis.from_url(
+            REDIS_URL,
             encoding="utf-8",
-            decode_responses=True
+            decode_responses=True,
+            ssl_cert_reqs=None  # For Upstash compatibility
         )
         
         # Initialize Database
