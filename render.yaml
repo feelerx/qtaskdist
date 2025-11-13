@@ -1,0 +1,42 @@
+services:
+  # API Service
+  - type: web
+    name: quantum-api
+    runtime: python
+    buildCommand: pip install -r qtaskdist_api/requirements.txt
+    startCommand: cd qtaskdist_api && uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: QBRAID_API_KEY
+        sync: false
+    
+  # Simulator Worker
+  - type: worker
+    name: quantum-simulator-worker
+    runtime: python
+    buildCommand: pip install -r qtaskdist_worker/requirements.txt
+    startCommand: cd qtaskdist_worker && python simulator_worker.py
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: QBRAID_API_KEY
+        sync: false
+    
+  # Backend Worker
+  - type: worker
+    name: quantum-backend-worker
+    runtime: python
+    buildCommand: pip install -r qtaskdist_worker/requirements.txt
+    startCommand: cd qtaskdist_worker && python backend_worker.py
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: QBRAID_API_KEY
+        sync: false
