@@ -37,7 +37,8 @@ class QueueProcessor:
         self.db_engine = None
         self.async_session_maker = None
         
-        redis_client = await aioredis.from_url(
+    async def initialize(self):
+        self.redis_client = await aioredis.from_url(
             REDIS_URL,
             encoding="utf-8",
             decode_responses=True,
