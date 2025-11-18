@@ -18,7 +18,8 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Async Task Manager", lifespan=lifespan)
 
 origins = [
-    "https://quantumsimulator.vercel.app"
+    "https://quantumsimulator.vercel.app",
+    "https://qtaskdist.vercel.app"
 ]
 
 app.add_middleware(
