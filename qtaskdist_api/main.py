@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Depends, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 from database import get_session, engine, Base
@@ -14,8 +15,19 @@ async def lifespan(app: FastAPI):
     await engine.dispose()
     await redis_client.close()
 
-
 app = FastAPI(title="Async Task Manager", lifespan=lifespan)
+
+origins = [
+    "https://quantumsimulator.vercel.app"
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.post("/tasks", response_model=TaskRead)
 async def create_task(task: TaskCreate, db: AsyncSession = Depends(get_session)):
